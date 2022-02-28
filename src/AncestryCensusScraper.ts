@@ -50,7 +50,7 @@ export class AncestryCensusScraper {
   }
 
   slowMo(): number {
-    return 500;
+    return 250;
   }
 
   async initBrowser() {
@@ -152,7 +152,7 @@ export class AncestryCensusScraper {
     let q: AncestryCensusQuery = {
       ...query,
       // @ts-ignore
-      relationToHeadOfHouse: "Head"
+      relationToHeadOfHouse: 12
     };
 
     for await (const head of this.scrape(q)) {
@@ -163,6 +163,9 @@ export class AncestryCensusScraper {
         ],
         location: head.householdLocation
       };
+
+      if (head.relations)
+        head.relations = Array.from(head.relations);
 
       household.head.relationToHeadOfHouse = AncestryCensusHouseholdMemberRelationToHeadOfHousehold.head;
       household.members.push(household.head);
@@ -269,6 +272,7 @@ export class AncestryCensusScraper {
   }
 
   async scrapeRecordFromPage(href: string): Promise<AncestryCensusHouseholdMember> {
+
     const recordPage = await this.context.newPage();
     await recordPage.goto(
       href
@@ -279,84 +283,98 @@ export class AncestryCensusScraper {
       content: await this.getjQuery()
     });
 
-    const record = await recordPage.evaluate(async () => {
-      return (($) => {
-        const card = $('table#recordServiceData');
-        const record = {};
-        for (const row of $('tr', card)) {
-          try {
-            if ($(row).is('.tableContainerRow').length || $(row).parents('.tableContainerRow').length)
-              continue;
-            let keyRaw = $('th', row)
-              .text()
-              .replace(/\(|,|\)|:|-/g, '');
 
-            if (!keyRaw.length)
-              keyRaw = 'householdLocation';
-
-            keyRaw = keyRaw.split(' ');
-
-            let keyBits = [];
-            for (let keyBit of keyRaw) {
-              keyBits.push(
-                keyBit[0].toUpperCase() +
-                keyBit.substr(1)
-              );
-            }
-
-            let key = keyBits.join('');
-            key = key[0].toLowerCase() + key.substr(1);
-
-            const rawValue = $('td', row).text().trim();
-            let value;
-
-            if (rawValue === 'Yes') value = true;
-            else if (rawValue === 'No') value = false;
-            else if (!Number.isNaN(Number(rawValue))) value = Number(rawValue);
-            else value = rawValue;
-
-            if (key === 'householdMembersAgeRelationship')
-              continue;
-
-            // @ts-ignore
-            record[key] = value;
-          } catch (err) {
-            console.warn(`could not parse data: ` + err.stack);
-          }
-        }
-
-        if ($('[data-is-household] a[title="View Record"]').length) {
-          // @ts-ignore
-          record.relations = $('[data-is-household] a[title="View Record"]').map(function () {
-            return $(this).attr('href');
-          });
-        }
-        for (let k in record) {
-          // @ts-ignore
-          let v = record[k];
-          if (typeof(v) === 'string' && v.indexOf("\n\t\t") !== -1 && v.match(/\n\t\t\t\t\t\t\t\t\t\t\[(.*)\]/)) {
-
-            // @ts-ignore
-            record[k] = v.split("\n\t\t\t\t\t\t\t\t\t\t").shift().trim();
-
-            // @ts-ignore
-            const alt = v.match(/\n\t\t\t\t\t\t\t\t\t\t\[(.*)\]/g).map((m) => {
-              return m.replace(/\[|\]/g, '').trim();
-            });
-
-            // @ts-ignore
-            record['alternative'+k[0].toUpperCase()+k.substr(1)] = alt;
-          }
-        }
-
-        // @ts-ignore
-        if (record.age) record.approximateAge = record.age;
-
-        return record;
-
-        // @ts-ignore
-      })(window.jQuery);
+    await recordPage.evaluate((ele) => {
+      // @ts-ignore
+      window.jQuery('iframe').remove();
     });
+    let record = await (await recordPage.$('body')).evaluate(async () => {
+      // @ts-ignore
+      const $ = window.jQuery;
+      const card = $('table#recordServiceData');
+      const record = {};
+      for (const row of $('tr', card)) {
+        try {
+          if ($(row).is('.tableContainerRow').length || $(row).parents('.tableContainerRow').length)
+            continue;
+          let keyRaw = $('th', row)
+            .text()
+            .replace(/\(|,|\)|:|-|'/g, '');
+
+          if (!keyRaw.length)
+            keyRaw = 'householdLocation';
+
+          keyRaw = keyRaw.split(' ');
+
+          let keyBits = [];
+          for (let keyBit of keyRaw) {
+            keyBits.push(
+              keyBit[0].toUpperCase() +
+              keyBit.substr(1)
+            );
+          }
+
+          let key = keyBits.join('');
+          key = key[0].toLowerCase() + key.substr(1);
+
+          const rawValue = $('td', row).text().trim();
+          let value;
+
+          if (rawValue === 'Yes') value = true;
+          else if (rawValue === 'No') value = false;
+          else if (!Number.isNaN(Number(rawValue))) value = Number(rawValue);
+          else value = rawValue;
+
+          if (key === 'householdMembersAgeRelationship')
+            continue;
+
+          // @ts-ignore
+          record[key] = value;
+        } catch (err) {
+          console.warn(`could not parse data: ` + err.stack);
+        }
+      }
+
+      if ($('[data-is-household] a[title="View Record"]').length) {
+        // @ts-ignore
+        record.relations = Array.from($('[data-is-household] a[title="View Record"]').map(function () {
+          return $(this).attr('href') ? $(this).attr('href').toString() : null;
+        })).filter(Boolean);
+        // @ts-ignore
+        record.numberOfHouseholdMembers = record.relations.length;
+      }
+      for (let k in record) {
+        // @ts-ignore
+        let v = record[k];
+        if (typeof(v) === 'string' && v.indexOf("\n\t\t") !== -1 && v.match(/\n\t\t\t\t\t\t\t\t\t\t\[(.*)\]/)) {
+
+          // @ts-ignore
+          record[k] = v.split("\n\t\t\t\t\t\t\t\t\t\t").shift().trim();
+
+          // @ts-ignore
+          const alt = v.match(/\n\t\t\t\t\t\t\t\t\t\t\[(.*)\]/g).map((m) => {
+            return m.replace(/\[|\]/g, '').trim();
+          });
+
+          // @ts-ignore
+          record['alternative'+k[0].toUpperCase()+k.substr(1)] = alt;
+        }
+      }
+
+      // @ts-ignore
+      if (record.age) record.approximateAge = record.age;
+
+      $(`<pre id="record" style="display: none;">${JSON.stringify(record)}</pre>`).appendTo(document.body);
+
+      return record;
+      // @ts-ignore
+    });
+
+    if (!record) {
+      // @ts-ignore
+      record = JSON.parse(await (await recordPage.$('#record')).innerHTML());
+    }
+
     await recordPage.close();
 
     for (let k in record) {
@@ -377,7 +395,8 @@ export class AncestryCensusScraper {
       await this.loginThenNavigate(url);
 
       const typeClick = async (selector: string, value: AncestryCensusQuerySimilarValue | AncestryCensusQueryValue | AncestryCensusQueryRangedValue, select?: boolean) => {
-        await censusPage.waitForSelector(selector);
+
+        await censusPage.waitForSelector(selector, { strict: false, state: 'attached' });
 
 
         if (selector.indexOf('select') === -1)
@@ -552,8 +571,8 @@ export class AncestryCensusScraper {
           ['[name="msydy"]', query.anyEventYear],
           ['[name="_83004002"]', query.raceNationality ],
           ['select#sfs_GenderModule', query.gender ],
-          ['select#sfs__SelfRelationToHead_13209062', query.relationToHeadOfHouse ],
-          ['select#sfs__SelfMaritalStatus_13209063', query.maritalStatus ],
+          ['select[id*="sfs__SelfRelationToHead"]', query.relationToHeadOfHouse ],
+          ['select[id*="sfs_SelfMaritalStatus"]', query.maritalStatus ],
           ['[name="_83004047"]', query.occupation ],
           ['[name="_F07AB145"]', query.highestGradeCompleted ],
           ['[name="_F0B3C3B8"]', query.houseNumber ],
@@ -570,7 +589,7 @@ export class AncestryCensusScraper {
           ['[name="_F63E84B9"]', query.hoursWorkedWeekPriorToCensus ],
           ['[name="_F6E8568B"]', query.attendedSchoolOrCollege ],
           ['[name="_83004002"]', query.raceNationality ],
-          ['select#sfs_GenderModule', query.gender ]
+          ['select[id*="sfs_GenderModule"]', query.gender ]
         );
 
         if (query.familyMembers) {

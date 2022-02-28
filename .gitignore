@@ -7,4 +7,5 @@ tscommand*
 node_modules
 .env
 .nyc_output
+
 misc/cookies.json

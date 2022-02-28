@@ -379,7 +379,7 @@ export type AncestryCensusHouseholdMember = {
   ageRangeMinimum?: number;
   ageRangeMaximum?: number;
   approximateAge?: number;
-  [key: string]: string|number|boolean|string[];
+  [key: string]: string|number|boolean|string[]|undefined;
 }
 
 export type AncestryCensusHouseholdHead = (AncestryCensusHouseholdMember&{

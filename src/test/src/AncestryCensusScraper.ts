@@ -265,6 +265,34 @@ describe('AncestryCensusScraper', async function () {
         assert.equal(household.members.length, household.head.numberOfHouseholdMembers);
       });
     });
+    describe('1940', async function () {
+      let household: AncestryCensusHousehold;
+      let loadHousehold = async function () {
+        if (!household) {
+          for await (const $household of scraper.scrapeHouseholds({
+            census: chance.shuffle([ 1940 ])[0] as 1940,
+            livedIn
+          })) {
+            household = $household;
+            break;
+          }
+        }
+      }
+
+      it('should have a household head', async function() {
+        await loadHousehold();
+        assert.ok(household.head);
+        assert.equal(household.head.relationToHeadOfHouse, AncestryCensusHouseholdMemberRelationToHeadOfHousehold.head);
+      });
+      it('should have a household location', async function() {
+        await loadHousehold();
+        assert.ok(household.location);
+      });
+      it('total household members should equal household members in array', async function() {
+        await loadHousehold();
+        assert.equal(household.members.length, household.head.numberOfHouseholdMembers);
+      });
+    });
   });
 
   afterEach(async function () {
