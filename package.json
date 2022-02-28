@@ -1,7 +1,7 @@
 {
     "name": "@znetstar/ancestry-census-scraper",
     "version": "1.0.0",
-    "description": "T",
+    "description": "",
     "main": "lib/index.js",
     "scripts": {
         "test": "mocha -r ts-node/register --timeout 0 --ui bdd src/test/src/*",
